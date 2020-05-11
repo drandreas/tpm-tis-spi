@@ -8,7 +8,7 @@
  *
  * It is based on linux/drivers/char/tpm/tpm_tis_spi_main.c
  */
-#define DT_DRV_COMPAT infineon_tpm20
+#define DT_DRV_COMPAT infineon_tpm
 
 #include <init.h>
 #include <drivers/spi.h>
@@ -22,7 +22,7 @@
 #endif
 
 #define MAX_SPI_FRAMESIZE   64
-#define TPM_RETRY		        50
+#define TPM_RETRY           50
 
 #define	TPM_ACCESS(l)       (0x0000 | ((l) << 12))
 #define	TPM_INT_ENABLE(l)   (0x0008 | ((l) << 12))
@@ -38,7 +38,7 @@
 
 LOG_MODULE_REGISTER(tpm, LOG_LEVEL_DBG);
 
-struct tpm20_device_data {
+struct tpm_device_data {
   struct device *spi_dev;
   struct spi_config spi_cfg;
 #if DT_INST_SPI_DEV_HAS_CS_GPIOS(0)
@@ -46,7 +46,7 @@ struct tpm20_device_data {
 #endif
 };
 
-struct tpm20_device_data tpm20_data;
+struct tpm_device_data tpm_data;
 
 /*
  * TCG SPI flow control is documented in section 6.4 of the spec[1]. In short,
@@ -55,7 +55,7 @@ struct tpm20_device_data tpm20_data;
  *
  * [1] https://trustedcomputinggroup.org/resource/pc-client-platform-tpm-profile-ptp-specification/
  */
-static int tpm20_flow_control(struct tpm20_device_data* tpm20, const struct spi_buf_set* buf_set)
+static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_set* buf_set)
 {
   u8_t* iobuf = (u8_t*)buf_set->buffers->buf;
   size_t* iolen = (size_t*)buf_set->buffers->len;
@@ -68,7 +68,7 @@ static int tpm20_flow_control(struct tpm20_device_data* tpm20, const struct spi_
     for (int i = 0; i < TPM_RETRY; i++) {
       k_sleep(K_USEC(5));
 
-      int ret = spi_read(tpm20->spi_dev, &tpm20->spi_cfg, buf_set);
+      int ret = spi_read(tpm->spi_dev, &tpm->spi_cfg, buf_set);
       if(ret < 0) {
         return ret;
       }
@@ -82,7 +82,7 @@ static int tpm20_flow_control(struct tpm20_device_data* tpm20, const struct spi_
   return 0;
 }
 
-static int tpm20_transfer(struct tpm20_device_data* tpm20, u16_t addr, u16_t len, u8_t* in, const u8_t* out)
+static int tpm_transfer(struct tpm_device_data* tpm, u16_t addr, u16_t len, u8_t* in, const u8_t* out)
 {
   int ret = 0;
   
@@ -105,12 +105,12 @@ static int tpm20_transfer(struct tpm20_device_data* tpm20, u16_t addr, u16_t len
       .count   = 1
     };
     
-    ret = spi_transceive(tpm20->spi_dev, &tpm20->spi_cfg, &buf_set, &buf_set);
+    ret = spi_transceive(tpm->spi_dev, &tpm->spi_cfg, &buf_set, &buf_set);
     if(ret < 0) {
       break;
     }
 
-    ret = tpm20_flow_control(tpm20, &buf_set);
+    ret = tpm_flow_control(tpm, &buf_set);
     if(ret < 0) {
       break;
     }
@@ -118,7 +118,7 @@ static int tpm20_transfer(struct tpm20_device_data* tpm20, u16_t addr, u16_t len
     buf.len = transfer_len;
 
     if(in) {
-      ret = spi_read(tpm20->spi_dev, &tpm20->spi_cfg, &buf_set);
+      ret = spi_read(tpm->spi_dev, &tpm->spi_cfg, &buf_set);
 
       memcpy(in, &iobuf[0], transfer_len);
       in += transfer_len;
@@ -126,7 +126,7 @@ static int tpm20_transfer(struct tpm20_device_data* tpm20, u16_t addr, u16_t len
       memcpy(&iobuf[0], out, transfer_len);
       out += transfer_len;
 
-      ret = spi_write(tpm20->spi_dev, &tpm20->spi_cfg, &buf_set);
+      ret = spi_write(tpm->spi_dev, &tpm->spi_cfg, &buf_set);
     }
 
     if(ret < 0) {
@@ -137,38 +137,38 @@ static int tpm20_transfer(struct tpm20_device_data* tpm20, u16_t addr, u16_t len
   }
 
   // Release Chip Select and SPI Bus
-  spi_release(tpm20->spi_dev, &tpm20->spi_cfg);
+  spi_release(tpm->spi_dev, &tpm->spi_cfg);
 
   return ret;
 }
 
-static int tpm20_read_bytes(struct tpm20_device_data *tpm20, u16_t addr, u16_t len, u8_t* result)
+static int tpm_read_bytes(struct tpm_device_data *tpm, u16_t addr, u16_t len, u8_t* result)
 {
-  return tpm20_transfer(tpm20, addr, len, result, NULL);
+  return tpm_transfer(tpm, addr, len, result, NULL);
 }
 
-static int tpm20_write_bytes(struct tpm20_device_data *tpm20, u16_t addr, u16_t len, const u8_t* value)
+static int tpm_write_bytes(struct tpm_device_data *tpm, u16_t addr, u16_t len, const u8_t* value)
 {
-  return tpm20_transfer(tpm20, addr, len, NULL, value);
+  return tpm_transfer(tpm, addr, len, NULL, value);
 }
 
-static int tpm20_read32(struct tpm20_device_data *tpm20, u16_t addr, u32_t* result)
+static int tpm_read32(struct tpm_device_data *tpm, u16_t addr, u32_t* result)
 {
-  int ret = tpm20_read_bytes(tpm20, addr, sizeof(u32_t), (u8_t*)result);
+  int ret = tpm_read_bytes(tpm, addr, sizeof(u32_t), (u8_t*)result);
   *result = sys_le32_to_cpu(*result);
   return ret;
 }
 
-static int tpm20_read8(struct tpm20_device_data *tpm20, u16_t addr, u8_t* result)
+static int tpm_read8(struct tpm_device_data *tpm, u16_t addr, u8_t* result)
 {
-  return tpm20_read_bytes(tpm20, addr, sizeof(u8_t), result);
+  return tpm_read_bytes(tpm, addr, sizeof(u8_t), result);
 }
 
-static u8_t tpm20_status(struct tpm20_device_data *tpm20)
+static u8_t tpm_status(struct tpm_device_data *tpm)
 {
   u8_t status;
 
-  int rc = tpm20_read8(tpm20, TPM_STS(0), &status);
+  int rc = tpm_read8(tpm, TPM_STS(0), &status);
   if (rc < 0) {
     return 0;
   } else {
@@ -176,44 +176,44 @@ static u8_t tpm20_status(struct tpm20_device_data *tpm20)
   }
 }
 
-int tpm20_init(struct device *dev) {
-  struct tpm20_device_data *tpm20 = dev->driver_data;
+int tpm_init(struct device *dev) {
+  struct tpm_device_data *tpm = dev->driver_data;
 
   // Configure SPI Driver and TPM CS
-  tpm20->spi_dev = device_get_binding(DT_INST_BUS_LABEL(0));
-  if(tpm20->spi_dev == NULL) {
+  tpm->spi_dev = device_get_binding(DT_INST_BUS_LABEL(0));
+  if(tpm->spi_dev == NULL) {
     LOG_ERR("Could not get SPI device for TPM 2.0");
     return -EINVAL;
   }
 
-  tpm20->spi_cfg.frequency = DT_INST_PROP(0, spi_max_frequency);
-  tpm20->spi_cfg.operation = SPI_OP_MODE_MASTER | SPI_HOLD_ON_CS |
-                             SPI_LOCK_ON | SPI_WORD_SET(8);
-  tpm20->spi_cfg.slave     = DT_INST_REG_ADDR(0);
+  tpm->spi_cfg.frequency = DT_INST_PROP(0, spi_max_frequency);
+  tpm->spi_cfg.operation = SPI_OP_MODE_MASTER | SPI_HOLD_ON_CS |
+                           SPI_LOCK_ON | SPI_WORD_SET(8);
+  tpm->spi_cfg.slave     = DT_INST_REG_ADDR(0);
 
 #if DT_INST_SPI_DEV_HAS_CS_GPIOS(0)
-  tpm20->cs_ctrl.gpio_dev = device_get_binding(DT_INST_SPI_DEV_CS_GPIOS_LABEL(0));
-  tpm20->cs_ctrl.gpio_pin = DT_INST_SPI_DEV_CS_GPIOS_PIN(0);
-  tpm20->cs_ctrl.delay    = 0U;
-  tpm20->spi_cfg.cs       = &(tpm20->cs_ctrl);
+  tpm->cs_ctrl.gpio_dev = device_get_binding(DT_INST_SPI_DEV_CS_GPIOS_LABEL(0));
+  tpm->cs_ctrl.gpio_pin = DT_INST_SPI_DEV_CS_GPIOS_PIN(0);
+  tpm->cs_ctrl.delay    = 0U;
+  tpm->spi_cfg.cs       = &(tpm->cs_ctrl);
 #if defined(CONFIG_BOARD_FRDM_K64F) || defined(CONFIG_BOARD_RV32M1_VEGA)
   pinmux_pin_set(device_get_binding(CONFIG_PINMUX_MCUX_PORTD_NAME), //TODO Fix
-                 tpm20->cs_ctrl.gpio_pin,
+                 tpm->cs_ctrl.gpio_pin,
                  PORT_PCR_MUX(kPORT_MuxAsGpio));
 #endif
 #else
-  tpm20->spi_cfg.cs       = NULL;
+  tpm->spi_cfg.cs       = NULL;
 #endif
 
   // Probe TPM
   u32_t vendor = 0;
-  if(tpm20_read32(tpm20, TPM_DID_VID(0), &vendor) < 0) {
+  if(tpm_read32(tpm, TPM_DID_VID(0), &vendor) < 0) {
     LOG_ERR("Could not find TPM 2.0");
     return -EIO;
   }
 
   u8_t rid = 0;
-	if(tpm20_read8(tpm20, TPM_RID(0), &rid) < 0) {
+	if(tpm_read8(tpm, TPM_RID(0), &rid) < 0) {
     LOG_ERR("Could not find TPM 2.0");
     return -EIO;
   }
@@ -223,10 +223,10 @@ int tpm20_init(struct device *dev) {
   return 0;
 }
 
-DEVICE_AND_API_INIT(tpm20,
+DEVICE_AND_API_INIT(tpm,
                     DT_INST_LABEL(0),
-                    &tpm20_init,
-                    &tpm20_data,
+                    &tpm_init,
+                    &tpm_data,
                     NULL,
                     APPLICATION,
                     CONFIG_APPLICATION_INIT_PRIORITY,
