@@ -1,0 +1,5 @@
+description: TCG standard compliant TPM
+
+compatible: "infineon,tpm"
+
+include: spi-device.yaml

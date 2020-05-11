@@ -1,0 +1,6 @@
+config TPM_TIS_SPI
+	bool "TCG standard compliant TPM driver"
+	depends on SPI
+	default n
+	help
+		Enable driver for TCG standard compliant TPM.
