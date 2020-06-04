@@ -13,6 +13,7 @@
 #include <init.h>
 #include <drivers/spi.h>
 #include <sys/byteorder.h>
+#include <tpm-tis-spi.h>
 #include <logging/log.h>
 
 /* Grotesque hack for pinmux boards */
@@ -21,9 +22,23 @@
 #include <fsl_port.h>
 #endif
 
-#define MAX_SPI_FRAMESIZE   64
-#define TPM_RETRY           50
+#define TPM_MAX_SPI_FRAMESIZE    64
 
+#define TPM_HEADER_SIZE          10
+#define TPM_RETRY_COUNT          50
+#define TPM_POLL_INTERVAL       250 /* usec */
+
+#define TIS_SHORT_TIMEOUT  750*1000 /* usec */
+#define TIS_LONG_TIMEOUT  2000*1000 /* usec */
+
+/* Status Flags */
+#define	TPM_STS_VALID          0x80
+#define	TPM_STS_COMMAND_READY  0x40
+#define	TPM_STS_GO             0x20
+#define	TPM_STS_DATA_AVAIL     0x10
+#define	TPM_STS_DATA_EXPECT    0x08
+
+/* Address List */
 #define	TPM_ACCESS(l)       (0x0000 | ((l) << 12))
 #define	TPM_INT_ENABLE(l)   (0x0008 | ((l) << 12))
 #define	TPM_INT_VECTOR(l)   (0x000C | ((l) << 12))
@@ -46,7 +61,7 @@ struct tpm_device_data {
 #endif
 };
 
-struct tpm_device_data tpm_data;
+static struct tpm_device_data tpm_data;
 
 /*
  * TCG SPI flow control is documented in section 6.4 of the spec[1]. In short,
@@ -65,7 +80,7 @@ static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_se
     iobuf[0] = 0;
     *iolen = 1;
 
-    for (int i = 0; i < TPM_RETRY; i++) {
+    for (int i = 0; i < TPM_RETRY_COUNT; i++) {
       k_sleep(K_USEC(5));
 
       int ret = spi_read(tpm->spi_dev, &tpm->spi_cfg, buf_set);
@@ -85,11 +100,11 @@ static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_se
 static int tpm_transfer(struct tpm_device_data* tpm, u16_t addr, u16_t len, u8_t* in, const u8_t* out)
 {
   int ret = 0;
-  
-  while (len) {
-    u8_t transfer_len = (len < MAX_SPI_FRAMESIZE) ? len : MAX_SPI_FRAMESIZE; 
 
-    u8_t iobuf[MAX_SPI_FRAMESIZE];
+  while (len) {
+    u8_t transfer_len = (len < TPM_MAX_SPI_FRAMESIZE) ? len : TPM_MAX_SPI_FRAMESIZE;
+
+    u8_t iobuf[TPM_MAX_SPI_FRAMESIZE];
     iobuf[0] = (in ? 0x80 : 0) | (transfer_len - 1);
     iobuf[1] = 0xd4;
     iobuf[2] = addr >> 8;
@@ -164,6 +179,11 @@ static int tpm_read8(struct tpm_device_data *tpm, u16_t addr, u8_t* result)
   return tpm_read_bytes(tpm, addr, sizeof(u8_t), result);
 }
 
+static int tpm_write8(struct tpm_device_data *tpm, u16_t addr, u8_t value)
+{
+  return tpm_write_bytes(tpm, addr, sizeof(u8_t), &value);
+}
+
 static u8_t tpm_status(struct tpm_device_data *tpm)
 {
   u8_t status;
@@ -175,6 +195,186 @@ static u8_t tpm_status(struct tpm_device_data *tpm)
     return status;
   }
 }
+
+static int wait_tpm_status(struct tpm_device_data *tpm, const u8_t status, const u32_t timeout)
+{
+  for(int i = 0; i < timeout/TPM_POLL_INTERVAL; i++) {
+    if(tpm_status(tpm) & status) {
+      return status;
+    }
+    k_sleep(K_USEC(TPM_POLL_INTERVAL));
+  }
+  return -EBUSY;
+}
+
+static int tpm_get_burstcount(struct tpm_device_data *tpm)
+{
+  u32_t value;
+
+  for(int i = 0; i < TIS_SHORT_TIMEOUT/TPM_POLL_INTERVAL; i++) {
+    int rc = tpm_read32(tpm, TPM_STS(0), &value);
+    if(rc < 0) {
+      return rc;
+    }
+
+    int burstcount = (value >> 8) & 0xFFFF;
+    if(burstcount != 0) {
+      return burstcount;
+    }
+    k_sleep(K_USEC(TPM_POLL_INTERVAL));
+  }
+  return -EBUSY;
+}
+
+
+static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, u16_t len, u8_t* value)
+{
+  size_t count = 0;
+  while (count < len) {
+    if(wait_tpm_status(tpm, TPM_STS_DATA_AVAIL | TPM_STS_VALID, TIS_LONG_TIMEOUT) < 0) {
+      return -ETIME;
+    }
+
+    int burstcount = tpm_get_burstcount(tpm);
+    if (burstcount < 0) {
+      return burstcount;
+    }
+
+    if(len - count < burstcount) {
+      burstcount = len - count;
+    }
+
+    int rc = tpm_read_bytes(tpm, TPM_DATA_FIFO(0), burstcount, &value[count]);
+    if(rc < 0) {
+      return rc;
+    }
+
+    count += burstcount;
+  }
+  return len;
+}
+
+static void tpm_abort(struct tpm_device_data *tpm)
+{
+  // Return to ready causes the current command to be aborted
+  tpm_write8(tpm, TPM_STS(0), TPM_STS_COMMAND_READY);
+}
+
+static int tpm_transmit(struct device *dev,
+                        size_t command_size,
+                        const u8_t *command_buffer)
+{
+  struct tpm_device_data *tpm = dev->driver_data;
+
+  u8_t status = tpm_status(tpm);
+  if((status & TPM_STS_COMMAND_READY) == 0) {
+    tpm_abort(tpm);
+
+    if(wait_tpm_status(tpm, TPM_STS_COMMAND_READY, TIS_LONG_TIMEOUT) < 0) {
+      return -ETIME;
+    }
+  }
+
+  // Transmit all bytes except last
+  size_t count = 0;
+  while(count < command_size - 1) {
+    int burstcount = tpm_get_burstcount(tpm);
+    if (burstcount < 0) {
+      return burstcount;
+    }
+
+    if(command_size - count - 1 < burstcount) {
+      burstcount = command_size - count - 1;
+    }
+
+    int rc = tpm_write_bytes(tpm, TPM_DATA_FIFO(0), burstcount, command_buffer + count);
+    if(rc < 0) {
+      return rc;
+    }
+    count += burstcount;
+
+    if(wait_tpm_status(tpm, TPM_STS_VALID, TIS_SHORT_TIMEOUT) < 0) {
+      return -ETIME;
+    }
+
+    status = tpm_status(tpm);
+    if((status & TPM_STS_DATA_EXPECT) == 0) {
+      return -EIO;
+    }
+  }
+
+  // Transmit last byte
+  int rc = tpm_write8(tpm, TPM_DATA_FIFO(0), command_buffer[count]);
+  if(rc < 0) {
+    return rc;
+  }
+
+  if(wait_tpm_status(tpm, TPM_STS_VALID, TIS_SHORT_TIMEOUT) < 0) {
+    return -ETIME;
+  }
+
+  status = tpm_status(tpm);
+  if((status & TPM_STS_DATA_EXPECT) != 0) {
+    return -EIO;
+  }
+
+  // Start Execution
+  rc = tpm_write8(tpm, TPM_STS(0), TPM_STS_GO);
+  if (rc < 0) {
+    return -EIO;
+  }
+
+  return 0;
+}
+
+static int tpm_receive(struct device *dev,
+                       size_t *response_size,
+                       u8_t *response_buffer,
+                       s32_t timeout)
+{
+  struct tpm_device_data *tpm = dev->driver_data;
+
+  // Responde to size query with max size
+  if(response_buffer == NULL) {
+    *response_size = 4096;
+    return 0;
+  }
+
+  // Check if buffer is sufficiently large for header
+  if (*response_size < TPM_HEADER_SIZE) {
+    return -EIO;
+  }
+
+  // Receive header (tag uint16, paramsize uint32, result code uint32)
+  int rc = tpm_read_segmented_bytes(tpm, TPM_HEADER_SIZE, response_buffer);
+  if (rc < TPM_HEADER_SIZE) {
+    return -EIO;
+  }
+
+  // Extract expected receive size (paramsize uint32)
+  u32_t expected = sys_be32_to_cpu(*(u32_t*)(response_buffer + 2));
+  if((expected > *response_size) || (expected < TPM_HEADER_SIZE)) {
+    return -EIO;
+  }
+
+  rc = tpm_read_segmented_bytes(tpm, expected - TPM_HEADER_SIZE,
+                                &response_buffer[TPM_HEADER_SIZE]);
+   if(rc + TPM_HEADER_SIZE < expected) {
+    return -EIO;
+  }
+
+  // Wait for TPM to return to idle
+  if(wait_tpm_status(tpm, TPM_STS_VALID, TIS_SHORT_TIMEOUT) < 0) {
+    return -ETIME;
+  }
+
+  return 0;
+}
+
+static struct tpm_device_api tpm_api = {
+  .transmit = tpm_transmit,
+  .receive = tpm_receive
+};
 
 int tpm_init(struct device *dev) {
   struct tpm_device_data *tpm = dev->driver_data;
@@ -197,7 +397,7 @@ int tpm_init(struct device *dev) {
   tpm->cs_ctrl.delay    = 0U;
   tpm->spi_cfg.cs       = &(tpm->cs_ctrl);
 #if defined(CONFIG_BOARD_FRDM_K64F) || defined(CONFIG_BOARD_RV32M1_VEGA)
-  pinmux_pin_set(device_get_binding(CONFIG_PINMUX_MCUX_PORTD_NAME), //TODO Fix
+  pinmux_pin_set(device_get_binding(CONFIG_PINMUX_MCUX_PORTD_NAME), //TODO
                  tpm->cs_ctrl.gpio_pin,
                  PORT_PCR_MUX(kPORT_MuxAsGpio));
 #endif
@@ -230,4 +430,4 @@ DEVICE_AND_API_INIT(tpm,
                     NULL,
                     APPLICATION,
                     CONFIG_APPLICATION_INIT_PRIORITY,
-                    NULL);
+                    &tpm_api);
