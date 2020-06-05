@@ -60,7 +60,7 @@
 #define	TPM_DID_VID(l)      (0x0F00 | ((l) << 12))
 #define	TPM_RID(l)          (0x0F04 | ((l) << 12))
 
-LOG_MODULE_REGISTER(tpm, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(tpm_tis_spi, LOG_LEVEL_DBG);
 
 struct tpm_device_data {
   struct device *spi_dev;
@@ -303,8 +303,7 @@ static int tpm_transmit(struct device *dev,
 {
   struct tpm_device_data *tpm = dev->driver_data;
 
-  u8_t status = tpm_status(tpm);
-  if((status & TPM_STS_COMMAND_READY) == 0) {
+  if((tpm_status(tpm) & TPM_STS_COMMAND_READY) == 0) {
     tpm_abort(tpm);
 
     if(wait_tpm_status(tpm, TPM_STS_COMMAND_READY, TIS_LONG_TIMEOUT) < 0) {
@@ -334,8 +333,7 @@ static int tpm_transmit(struct device *dev,
       return -ETIME;
     }
 
-    status = tpm_status(tpm);
-    if((status & TPM_STS_DATA_EXPECT) == 0) {
+    if((tpm_status(tpm) & TPM_STS_DATA_EXPECT) == 0) {
       return -EIO;
     }
   }
@@ -350,8 +348,7 @@ static int tpm_transmit(struct device *dev,
     return -ETIME;
   }
 
-  status = tpm_status(tpm);
-  if((status & TPM_STS_DATA_EXPECT) != 0) {
+  if((tpm_status(tpm) & TPM_STS_DATA_EXPECT) != 0) {
     return -EIO;
   }
 
