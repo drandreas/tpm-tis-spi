@@ -22,21 +22,30 @@
 #include <fsl_port.h>
 #endif
 
-#define TPM_MAX_SPI_FRAMESIZE    64
+#define TPM_MAX_SPI_FRAMESIZE        64
+#define TPM_ZEPHYR_LOCALITY           1
 
-#define TPM_HEADER_SIZE          10
-#define TPM_RETRY_COUNT          50
-#define TPM_POLL_INTERVAL       250 /* usec */
+#define TPM_HEADER_SIZE              10
+#define TPM_RETRY_COUNT              50
+#define TPM_POLL_INTERVAL           250 /* usec */
 
-#define TIS_SHORT_TIMEOUT  750*1000 /* usec */
-#define TIS_LONG_TIMEOUT  2000*1000 /* usec */
+#define TIS_SHORT_TIMEOUT      750*1000 /* usec */
+#define TIS_LONG_TIMEOUT      2000*1000 /* usec */
 
 /* Status Flags */
-#define	TPM_STS_VALID          0x80
-#define	TPM_STS_COMMAND_READY  0x40
-#define	TPM_STS_GO             0x20
-#define	TPM_STS_DATA_AVAIL     0x10
-#define	TPM_STS_DATA_EXPECT    0x08
+#define	TPM_STS_VALID              0x80
+#define	TPM_STS_COMMAND_READY      0x40
+#define	TPM_STS_GO                 0x20
+#define	TPM_STS_DATA_AVAIL         0x10
+#define	TPM_STS_DATA_EXPECT        0x08
+#define	TPM_STS_SELF_TEST_DONE     0x04
+#define	TPM_STS_RESP_RETRY         0x02
+
+/* Access Flags */
+#define	TPM_ACCESS_VALID           0x80
+#define	TPM_ACCESS_ACTIVE_LOCALITY 0x20
+#define	TPM_ACCESS_REQUEST_PENDING 0x04
+#define	TPM_ACCESS_REQUEST_USE     0x02
 
 /* Address List */
 #define	TPM_ACCESS(l)       (0x0000 | ((l) << 12))
@@ -188,7 +197,7 @@ static u8_t tpm_status(struct tpm_device_data *tpm)
 {
   u8_t status;
 
-  int rc = tpm_read8(tpm, TPM_STS(0), &status);
+  int rc = tpm_read8(tpm, TPM_STS(TPM_ZEPHYR_LOCALITY), &status);
   if (rc < 0) {
     return 0;
   } else {
@@ -199,8 +208,36 @@ static u8_t tpm_status(struct tpm_device_data *tpm)
 static int wait_tpm_status(struct tpm_device_data *tpm, const u8_t status, const u32_t timeout)
 {
   for(int i = 0; i < timeout/TPM_POLL_INTERVAL; i++) {
-    if(tpm_status(tpm) & status) {
+    if((tpm_status(tpm) & status) == status) {
       return status;
+    }
+    k_sleep(K_USEC(TPM_POLL_INTERVAL));
+  }
+  return -EBUSY;
+}
+
+
+static int tpm_request_access(struct tpm_device_data *tpm, u8_t access)
+{
+  return tpm_write8(tpm, TPM_ACCESS(TPM_ZEPHYR_LOCALITY), access);
+}
+
+static u8_t tpm_access(struct tpm_device_data *tpm)
+{
+  u8_t access;
+  int rc= tpm_read8(tpm, TPM_ACCESS(TPM_ZEPHYR_LOCALITY), &access);
+  if (rc < 0) {
+    return 0;
+  } else {
+    return access;
+  }
+}
+
+static int wait_tpm_access(struct tpm_device_data *tpm, u8_t access, const u32_t timeout)
+{
+  for(int i = 0; i < timeout/TPM_POLL_INTERVAL; i++) {
+    if((tpm_access(tpm) & access) == access) {
+      return access;
     }
     k_sleep(K_USEC(TPM_POLL_INTERVAL));
   }
@@ -212,7 +249,7 @@ static int tpm_get_burstcount(struct tpm_device_data *tpm)
   u32_t value;
 
   for(int i = 0; i < TIS_SHORT_TIMEOUT/TPM_POLL_INTERVAL; i++) {
-    int rc = tpm_read32(tpm, TPM_STS(0), &value);
+    int rc = tpm_read32(tpm, TPM_STS(TPM_ZEPHYR_LOCALITY), &value);
     if(rc < 0) {
       return rc;
     }
@@ -244,7 +281,7 @@ static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, u16_t len, u8_t
       burstcount = len - count;
     }
 
-    int rc = tpm_read_bytes(tpm, TPM_DATA_FIFO(0), burstcount, &value[count]);
+    int rc = tpm_read_bytes(tpm, TPM_DATA_FIFO(TPM_ZEPHYR_LOCALITY), burstcount, &value[count]);
     if(rc < 0) {
       return rc;
     }
@@ -257,7 +294,7 @@ static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, u16_t len, u8_t
 static void tpm_abort(struct tpm_device_data *tpm)
 {
   // Return to ready causes the current command to be aborted
-  tpm_write8(tpm, TPM_STS(0), TPM_STS_COMMAND_READY);
+  tpm_write8(tpm, TPM_STS(TPM_ZEPHYR_LOCALITY), TPM_STS_COMMAND_READY);
 }
 
 static int tpm_transmit(struct device *dev,
@@ -287,7 +324,7 @@ static int tpm_transmit(struct device *dev,
       burstcount = command_size - count - 1;
     }
 
-    int rc = tpm_write_bytes(tpm, TPM_DATA_FIFO(0), burstcount, command_buffer + count);
+    int rc = tpm_write_bytes(tpm, TPM_DATA_FIFO(TPM_ZEPHYR_LOCALITY), burstcount, command_buffer + count);
     if(rc < 0) {
       return rc;
     }
@@ -304,7 +341,7 @@ static int tpm_transmit(struct device *dev,
   }
 
   // Transmit last byte
-  int rc = tpm_write8(tpm, TPM_DATA_FIFO(0), command_buffer[count]);
+  int rc = tpm_write8(tpm, TPM_DATA_FIFO(TPM_ZEPHYR_LOCALITY), command_buffer[count]);
   if(rc < 0) {
     return rc;
   }
@@ -319,7 +356,7 @@ static int tpm_transmit(struct device *dev,
   }
 
   // Start Execution
-  rc = tpm_write8(tpm, TPM_STS(0), TPM_STS_GO);
+  rc = tpm_write8(tpm, TPM_STS(TPM_ZEPHYR_LOCALITY), TPM_STS_GO);
   if (rc < 0) {
     return -EIO;
   }
@@ -415,6 +452,18 @@ int tpm_init(struct device *dev) {
   u8_t rid = 0;
 	if(tpm_read8(tpm, TPM_RID(0), &rid) < 0) {
     LOG_ERR("Could not find TPM 2.0");
+    return -EIO;
+  }
+
+  // Request Locality
+  if(tpm_request_access(tpm, TPM_ACCESS_REQUEST_USE) < 0) {
+    LOG_ERR("Could not request locality");
+    return -EIO;
+  }
+
+  // Wait for Locality to become available
+  if(wait_tpm_access(tpm, TPM_ACCESS_ACTIVE_LOCALITY | TPM_ACCESS_VALID, TIS_LONG_TIMEOUT) < 0) {
+    LOG_ERR("Could not request locality");
     return -EIO;
   }
 
