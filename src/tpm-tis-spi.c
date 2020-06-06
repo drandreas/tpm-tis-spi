@@ -291,10 +291,12 @@ static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, u16_t len, u8_t
   return len;
 }
 
-static void tpm_abort(struct tpm_device_data *tpm)
+static int tpm_cancel(struct device *dev)
 {
-  // Return to ready causes the current command to be aborted
-  tpm_write8(tpm, TPM_STS(TPM_ZEPHYR_LOCALITY), TPM_STS_COMMAND_READY);
+  struct tpm_device_data *tpm = dev->driver_data;
+
+  // Return to ready causes the current command to be canceled
+  return tpm_write8(tpm, TPM_STS(TPM_ZEPHYR_LOCALITY), TPM_STS_COMMAND_READY);
 }
 
 static int tpm_transmit(struct device *dev,
@@ -304,7 +306,7 @@ static int tpm_transmit(struct device *dev,
   struct tpm_device_data *tpm = dev->driver_data;
 
   if((tpm_status(tpm) & TPM_STS_COMMAND_READY) == 0) {
-    tpm_abort(tpm);
+    tpm_cancel(dev);
 
     if(wait_tpm_status(tpm, TPM_STS_COMMAND_READY, TIS_LONG_TIMEOUT) < 0) {
       return -ETIME;
@@ -393,7 +395,7 @@ static int tpm_receive(struct device *dev,
 
   rc = tpm_read_segmented_bytes(tpm, expected - TPM_HEADER_SIZE,
                                 &response_buffer[TPM_HEADER_SIZE]);
-   if(rc + TPM_HEADER_SIZE < expected) {
+  if(rc + TPM_HEADER_SIZE < expected) {
     return -EIO;
   }
 
@@ -407,7 +409,8 @@ static int tpm_receive(struct device *dev,
 
 static struct tpm_device_api tpm_api = {
   .transmit = tpm_transmit,
-  .receive = tpm_receive
+  .receive = tpm_receive,
+  .cancel = tpm_cancel
 };
 
 int tpm_init(struct device *dev) {
