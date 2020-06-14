@@ -62,6 +62,21 @@
 
 LOG_MODULE_REGISTER(tpm_tis_spi, LOG_LEVEL_DBG);
 
+/* TPM Commands */
+static uint8_t CMD_START_UP[] = {
+  0x80, 0x01,             //TPMI_ST_COMMAND_TAG = TPM_ST_NO_SESSIONS
+  0x00, 0x00, 0x00, 0x0C, //UINT32 (cmd size)   = 12
+  0x00, 0x00, 0x01, 0x44, //TPM_CC              = TPM_CC_SelfTest
+  0x00, 0x00              //TPM_SU              = TPM_SU_CLEAR
+};
+
+static uint8_t CMD_SELF_TEST[] = {
+  0x80, 0x01,             //TPMI_ST_COMMAND_TAG = TPM_ST_NO_SESSIONS
+  0x00, 0x00, 0x00, 0x0B, //UINT32 (cmd size)   = 11
+  0x00, 0x00, 0x01, 0x43, //TPM_CC              = TPM_CC_Startup
+  0x00                    //TPMI_YES_NO         = NO
+};
+
 struct tpm_device_data {
   struct device *spi_dev;
   struct spi_config spi_cfg;
@@ -458,7 +473,6 @@ int tpm_init(struct device *dev) {
   }
 
   // Request Locality
-  tpm->locality = TPM_ZEPHYR_LOCALITY;
   if(tpm_request_access(tpm, TPM_ACCESS_REQUEST_USE) < 0) {
     LOG_ERR("Could not request locality");
     return -EIO;
@@ -467,6 +481,30 @@ int tpm_init(struct device *dev) {
   // Wait for Locality to become available
   if(wait_tpm_access(tpm, TPM_ACCESS_ACTIVE_LOCALITY | TPM_ACCESS_VALID, TIS_LONG_TIMEOUT) < 0) {
     LOG_ERR("Could not request locality");
+    return -EIO;
+  }
+
+  // Execute StartUp
+  if(tpm_transmit(dev, sizeof(CMD_START_UP), CMD_START_UP) < 0) {
+    LOG_ERR("Could not start tpm");
+    return -EIO;
+  }
+
+  size_t buf_sz = TPM_HEADER_SIZE;
+  u8_t buf[TPM_HEADER_SIZE];
+  if(tpm_receive(dev, &buf_sz, &buf[0], TIS_LONG_TIMEOUT) < 0) {
+    LOG_ERR("Could not start tpm");
+    return -EIO;
+  }
+
+  // Execute SelfTest
+  if(tpm_transmit(dev, sizeof(CMD_SELF_TEST), CMD_SELF_TEST) < 0) {
+    LOG_ERR("Could not execute selftest");
+    return -EIO;
+  }
+
+  if(tpm_receive(dev, &buf_sz, &buf[0], TIS_LONG_TIMEOUT) < 0) {
+    LOG_ERR("Could not execute selftest");
     return -EIO;
   }
 
