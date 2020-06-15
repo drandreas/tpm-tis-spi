@@ -27,10 +27,10 @@
 
 #define TPM_HEADER_SIZE              10
 #define TPM_RETRY_COUNT              50
-#define TPM_POLL_INTERVAL           250 /* usec */
+#define TPM_POLL_INTERVAL            50 /* msec */
 
-#define TIS_SHORT_TIMEOUT      750*1000 /* usec */
-#define TIS_LONG_TIMEOUT      2000*1000 /* usec */
+#define TIS_SHORT_TIMEOUT           750 /* msec */
+#define TIS_LONG_TIMEOUT           2000 /* msec */
 
 /* Status Flags */
 #define	TPM_STS_VALID              0x80
@@ -106,7 +106,7 @@ static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_se
     *iolen = 1;
 
     for (int i = 0; i < TPM_RETRY_COUNT; i++) {
-      k_sleep(K_USEC(5));
+      k_sleep(K_MSEC(5));
 
       int ret = spi_read(tpm->spi_dev, &tpm->spi_cfg, buf_set);
       if(ret < 0) {
@@ -227,7 +227,7 @@ static int wait_tpm_status(struct tpm_device_data *tpm, const u8_t status, const
     if((tpm_status(tpm) & status) == status) {
       return status;
     }
-    k_sleep(K_USEC(TPM_POLL_INTERVAL));
+    k_sleep(K_MSEC(TPM_POLL_INTERVAL));
   }
   return -EBUSY;
 }
@@ -255,7 +255,7 @@ static int wait_tpm_access(struct tpm_device_data *tpm, u8_t access, const u32_t
     if((tpm_access(tpm) & access) == access) {
       return access;
     }
-    k_sleep(K_USEC(TPM_POLL_INTERVAL));
+    k_sleep(K_MSEC(TPM_POLL_INTERVAL));
   }
   return -EBUSY;
 }
@@ -467,7 +467,7 @@ int tpm_init(struct device *dev) {
   }
 
   u8_t rid = 0;
-	if(tpm_read8(tpm, TPM_RID(tpm->locality), &rid) < 0) {
+  if(tpm_read8(tpm, TPM_RID(tpm->locality), &rid) < 0) {
     LOG_ERR("Could not find TPM 2.0");
     return -EIO;
   }
