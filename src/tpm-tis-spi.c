@@ -398,7 +398,11 @@ static int tpm_receive(struct device *dev,
   }
 
   // Receive header (tag uint16, paramsize uint32, result code uint32)
-  int rc = tpm_read_segmented_bytes(tpm, TPM_HEADER_SIZE, response_buffer);
+  int rc = 0;
+  do {
+    rc = tpm_read_segmented_bytes(tpm, TPM_HEADER_SIZE, response_buffer);
+  } while((timeout == -1) && (rc == -ETIME));
+
   if (rc < TPM_HEADER_SIZE) {
     return -EIO;
   }
