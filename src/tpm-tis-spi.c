@@ -98,7 +98,7 @@ static struct tpm_device_data tpm_data;
 static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_set* buf_set)
 {
   u8_t* iobuf = (u8_t*)buf_set->buffers->buf;
-  size_t* iolen = (size_t*)buf_set->buffers->len;
+  size_t* iolen = (size_t*)&buf_set->buffers->len;
 
   if((iobuf[3] & 0x01) == 0) {
     // handle SPI wait states
