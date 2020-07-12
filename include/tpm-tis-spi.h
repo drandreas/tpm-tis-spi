@@ -9,7 +9,7 @@ typedef int (*tpm_transmit_t)(struct device *device,
 typedef int (*tpm_receive_t)(struct device *device,
                              size_t *response_size,
                              uint8_t *response_buffer,
-                             int32_t timeout);
+                             k_timeout_t timeout);
 
 typedef int (*tpm_cancel_t)(struct device *device);
 
@@ -32,7 +32,7 @@ static inline int tpm_device_transmit(struct device *device,
 static inline int tpm_device_receive(struct device *device,
                                      size_t *response_size,
                                      uint8_t *response_buffer,
-                                     int32_t timeout)
+                                     k_timeout_t timeout)
 {
   struct tpm_device_api *api;
 

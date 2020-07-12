@@ -29,7 +29,7 @@
 #define TPM_RETRY_COUNT              50
 #define TPM_POLL_INTERVAL            50 /* msec */
 
-#define TIS_SHORT_TIMEOUT           750 /* msec */
+#define TIS_SHORT_TIMEOUT           250 /* msec */
 #define TIS_LONG_TIMEOUT           2000 /* msec */
 
 /* Status Flags */
@@ -260,11 +260,11 @@ static int wait_tpm_access(struct tpm_device_data *tpm, uint8_t access, const ui
   return -EBUSY;
 }
 
-static int tpm_get_burstcount(struct tpm_device_data *tpm)
+static int tpm_get_burstcount(struct tpm_device_data *tpm, const uint32_t timeout)
 {
   uint32_t value;
 
-  for(int i = 0; i < TIS_SHORT_TIMEOUT/TPM_POLL_INTERVAL; i++) {
+  for(int i = 0; i < timeout/TPM_POLL_INTERVAL; i++) {
     int rc = tpm_read32(tpm, TPM_STS(tpm->locality), &value);
     if(rc < 0) {
       return rc;
@@ -284,11 +284,11 @@ static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, uint16_t len, u
 {
   size_t count = 0;
   while (count < len) {
-    if(wait_tpm_status(tpm, TPM_STS_DATA_AVAIL | TPM_STS_VALID, TIS_LONG_TIMEOUT) < 0) {
+    if(wait_tpm_status(tpm, TPM_STS_DATA_AVAIL | TPM_STS_VALID, TIS_SHORT_TIMEOUT) < 0) {
       return -ETIME;
     }
 
-    int burstcount = tpm_get_burstcount(tpm);
+    int burstcount = tpm_get_burstcount(tpm, TIS_SHORT_TIMEOUT);
     if (burstcount < 0) {
       return burstcount;
     }
@@ -332,7 +332,7 @@ static int tpm_transmit(struct device *dev,
   // Transmit all bytes except last
   size_t count = 0;
   while(count < command_size - 1) {
-    int burstcount = tpm_get_burstcount(tpm);
+    int burstcount = tpm_get_burstcount(tpm, TIS_SHORT_TIMEOUT);
     if (burstcount < 0) {
       return burstcount;
     }
@@ -382,9 +382,12 @@ static int tpm_transmit(struct device *dev,
 static int tpm_receive(struct device *dev,
                        size_t *response_size,
                        uint8_t *response_buffer,
-                       int32_t timeout)
+                       k_timeout_t timeout)
 {
   struct tpm_device_data *tpm = dev->driver_data;
+
+  // Calculate deadline (this also handles K_FOREVER)
+  uint64_t deadline = z_timeout_end_calc(timeout);
 
   // Responde to size query with max size
   if(response_buffer == NULL) {
@@ -401,7 +404,7 @@ static int tpm_receive(struct device *dev,
   int rc = 0;
   do {
     rc = tpm_read_segmented_bytes(tpm, TPM_HEADER_SIZE, response_buffer);
-  } while((timeout == -1) && (rc == -ETIME));
+  } while((deadline < k_uptime_ticks()) && (rc == -ETIME));
 
   if (rc < TPM_HEADER_SIZE) {
     return -EIO;
@@ -496,7 +499,7 @@ int tpm_init(struct device *dev) {
 
   size_t buf_sz = TPM_HEADER_SIZE;
   uint8_t buf[TPM_HEADER_SIZE];
-  if(tpm_receive(dev, &buf_sz, &buf[0], TIS_LONG_TIMEOUT) < 0) {
+  if(tpm_receive(dev, &buf_sz, &buf[0], K_MSEC(TIS_LONG_TIMEOUT)) < 0) {
     LOG_ERR("Could not start tpm");
     return -EIO;
   }
@@ -507,7 +510,7 @@ int tpm_init(struct device *dev) {
     return -EIO;
   }
 
-  if(tpm_receive(dev, &buf_sz, &buf[0], TIS_LONG_TIMEOUT) < 0) {
+  if(tpm_receive(dev, &buf_sz, &buf[0], K_MSEC(TIS_LONG_TIMEOUT)) < 0) {
     LOG_ERR("Could not execute selftest");
     return -EIO;
   }
