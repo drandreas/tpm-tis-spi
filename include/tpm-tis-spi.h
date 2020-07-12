@@ -4,12 +4,12 @@
 
 typedef int (*tpm_transmit_t)(struct device *device,
                               size_t command_size,
-                              const u8_t *command_buffer);
+                              const uint8_t *command_buffer);
 
 typedef int (*tpm_receive_t)(struct device *device,
                              size_t *response_size,
-                             u8_t *response_buffer,
-                             s32_t timeout);
+                             uint8_t *response_buffer,
+                             int32_t timeout);
 
 typedef int (*tpm_cancel_t)(struct device *device);
 
@@ -21,7 +21,7 @@ struct tpm_device_api {
 
 static inline int tpm_device_transmit(struct device *device,
                                       size_t command_size,
-                                      const u8_t *command_buffer)
+                                      const uint8_t *command_buffer)
 {
   struct tpm_device_api *api;
 
@@ -31,8 +31,8 @@ static inline int tpm_device_transmit(struct device *device,
 
 static inline int tpm_device_receive(struct device *device,
                                      size_t *response_size,
-                                     u8_t *response_buffer,
-                                     s32_t timeout)
+                                     uint8_t *response_buffer,
+                                     int32_t timeout)
 {
   struct tpm_device_api *api;
 

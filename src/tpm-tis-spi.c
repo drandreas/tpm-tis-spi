@@ -83,7 +83,7 @@ struct tpm_device_data {
 #if DT_INST_SPI_DEV_HAS_CS_GPIOS(0)
   struct spi_cs_control cs_ctrl;
 #endif
-  u8_t locality;
+  uint8_t locality;
 };
 
 static struct tpm_device_data tpm_data;
@@ -97,7 +97,7 @@ static struct tpm_device_data tpm_data;
  */
 static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_set* buf_set)
 {
-  u8_t* iobuf = (u8_t*)buf_set->buffers->buf;
+  uint8_t* iobuf = (uint8_t*)buf_set->buffers->buf;
   size_t* iolen = (size_t*)&buf_set->buffers->len;
 
   if((iobuf[3] & 0x01) == 0) {
@@ -122,14 +122,14 @@ static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_se
   return 0;
 }
 
-static int tpm_transfer(struct tpm_device_data* tpm, u16_t addr, u16_t len, u8_t* in, const u8_t* out)
+static int tpm_transfer(struct tpm_device_data* tpm, uint16_t addr, uint16_t len, uint8_t* in, const uint8_t* out)
 {
   int ret = 0;
 
   while (len) {
-    u8_t transfer_len = (len < TPM_MAX_SPI_FRAMESIZE) ? len : TPM_MAX_SPI_FRAMESIZE;
+    uint8_t transfer_len = (len < TPM_MAX_SPI_FRAMESIZE) ? len : TPM_MAX_SPI_FRAMESIZE;
 
-    u8_t iobuf[TPM_MAX_SPI_FRAMESIZE];
+    uint8_t iobuf[TPM_MAX_SPI_FRAMESIZE];
     iobuf[0] = (in ? 0x80 : 0) | (transfer_len - 1);
     iobuf[1] = 0xd4;
     iobuf[2] = addr >> 8;
@@ -182,36 +182,36 @@ static int tpm_transfer(struct tpm_device_data* tpm, u16_t addr, u16_t len, u8_t
   return ret;
 }
 
-static int tpm_read_bytes(struct tpm_device_data *tpm, u16_t addr, u16_t len, u8_t* result)
+static int tpm_read_bytes(struct tpm_device_data *tpm, uint16_t addr, uint16_t len, uint8_t* result)
 {
   return tpm_transfer(tpm, addr, len, result, NULL);
 }
 
-static int tpm_write_bytes(struct tpm_device_data *tpm, u16_t addr, u16_t len, const u8_t* value)
+static int tpm_write_bytes(struct tpm_device_data *tpm, uint16_t addr, uint16_t len, const uint8_t* value)
 {
   return tpm_transfer(tpm, addr, len, NULL, value);
 }
 
-static int tpm_read32(struct tpm_device_data *tpm, u16_t addr, u32_t* result)
+static int tpm_read32(struct tpm_device_data *tpm, uint16_t addr, uint32_t* result)
 {
-  int ret = tpm_read_bytes(tpm, addr, sizeof(u32_t), (u8_t*)result);
+  int ret = tpm_read_bytes(tpm, addr, sizeof(uint32_t), (uint8_t*)result);
   *result = sys_le32_to_cpu(*result);
   return ret;
 }
 
-static int tpm_read8(struct tpm_device_data *tpm, u16_t addr, u8_t* result)
+static int tpm_read8(struct tpm_device_data *tpm, uint16_t addr, uint8_t* result)
 {
-  return tpm_read_bytes(tpm, addr, sizeof(u8_t), result);
+  return tpm_read_bytes(tpm, addr, sizeof(uint8_t), result);
 }
 
-static int tpm_write8(struct tpm_device_data *tpm, u16_t addr, u8_t value)
+static int tpm_write8(struct tpm_device_data *tpm, uint16_t addr, uint8_t value)
 {
-  return tpm_write_bytes(tpm, addr, sizeof(u8_t), &value);
+  return tpm_write_bytes(tpm, addr, sizeof(uint8_t), &value);
 }
 
-static u8_t tpm_status(struct tpm_device_data *tpm)
+static uint8_t tpm_status(struct tpm_device_data *tpm)
 {
-  u8_t status;
+  uint8_t status;
 
   int rc = tpm_read8(tpm, TPM_STS(tpm->locality), &status);
   if (rc < 0) {
@@ -221,7 +221,7 @@ static u8_t tpm_status(struct tpm_device_data *tpm)
   }
 }
 
-static int wait_tpm_status(struct tpm_device_data *tpm, const u8_t status, const u32_t timeout)
+static int wait_tpm_status(struct tpm_device_data *tpm, const uint8_t status, const uint32_t timeout)
 {
   for(int i = 0; i < timeout/TPM_POLL_INTERVAL; i++) {
     if((tpm_status(tpm) & status) == status) {
@@ -233,14 +233,14 @@ static int wait_tpm_status(struct tpm_device_data *tpm, const u8_t status, const
 }
 
 
-static int tpm_request_access(struct tpm_device_data *tpm, u8_t access)
+static int tpm_request_access(struct tpm_device_data *tpm, uint8_t access)
 {
   return tpm_write8(tpm, TPM_ACCESS(tpm->locality), access);
 }
 
-static u8_t tpm_access(struct tpm_device_data *tpm)
+static uint8_t tpm_access(struct tpm_device_data *tpm)
 {
-  u8_t access;
+  uint8_t access;
   int rc = tpm_read8(tpm, TPM_ACCESS(tpm->locality), &access);
   if (rc < 0) {
     return 0;
@@ -249,7 +249,7 @@ static u8_t tpm_access(struct tpm_device_data *tpm)
   }
 }
 
-static int wait_tpm_access(struct tpm_device_data *tpm, u8_t access, const u32_t timeout)
+static int wait_tpm_access(struct tpm_device_data *tpm, uint8_t access, const uint32_t timeout)
 {
   for(int i = 0; i < timeout/TPM_POLL_INTERVAL; i++) {
     if((tpm_access(tpm) & access) == access) {
@@ -262,7 +262,7 @@ static int wait_tpm_access(struct tpm_device_data *tpm, u8_t access, const u32_t
 
 static int tpm_get_burstcount(struct tpm_device_data *tpm)
 {
-  u32_t value;
+  uint32_t value;
 
   for(int i = 0; i < TIS_SHORT_TIMEOUT/TPM_POLL_INTERVAL; i++) {
     int rc = tpm_read32(tpm, TPM_STS(tpm->locality), &value);
@@ -280,7 +280,7 @@ static int tpm_get_burstcount(struct tpm_device_data *tpm)
 }
 
 
-static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, u16_t len, u8_t* value)
+static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, uint16_t len, uint8_t* value)
 {
   size_t count = 0;
   while (count < len) {
@@ -317,7 +317,7 @@ static int tpm_cancel(struct device *dev)
 
 static int tpm_transmit(struct device *dev,
                         size_t command_size,
-                        const u8_t *command_buffer)
+                        const uint8_t *command_buffer)
 {
   struct tpm_device_data *tpm = dev->driver_data;
 
@@ -381,8 +381,8 @@ static int tpm_transmit(struct device *dev,
 
 static int tpm_receive(struct device *dev,
                        size_t *response_size,
-                       u8_t *response_buffer,
-                       s32_t timeout)
+                       uint8_t *response_buffer,
+                       int32_t timeout)
 {
   struct tpm_device_data *tpm = dev->driver_data;
 
@@ -408,7 +408,7 @@ static int tpm_receive(struct device *dev,
   }
 
   // Extract expected receive size (paramsize uint32)
-  u32_t expected = sys_be32_to_cpu(*(u32_t*)(response_buffer + 2));
+  uint32_t expected = sys_be32_to_cpu(*(uint32_t*)(response_buffer + 2));
   if((expected > *response_size) || (expected < TPM_HEADER_SIZE)) {
     return -EIO;
   }
@@ -464,13 +464,13 @@ int tpm_init(struct device *dev) {
   tpm->locality         = 0;
 
   // Probe TPM
-  u32_t vendor = 0;
+  uint32_t vendor = 0;
   if(tpm_read32(tpm, TPM_DID_VID(tpm->locality), &vendor) < 0) {
     LOG_ERR("Could not find TPM 2.0");
     return -EIO;
   }
 
-  u8_t rid = 0;
+  uint8_t rid = 0;
   if(tpm_read8(tpm, TPM_RID(tpm->locality), &rid) < 0) {
     LOG_ERR("Could not find TPM 2.0");
     return -EIO;
@@ -495,7 +495,7 @@ int tpm_init(struct device *dev) {
   }
 
   size_t buf_sz = TPM_HEADER_SIZE;
-  u8_t buf[TPM_HEADER_SIZE];
+  uint8_t buf[TPM_HEADER_SIZE];
   if(tpm_receive(dev, &buf_sz, &buf[0], TIS_LONG_TIMEOUT) < 0) {
     LOG_ERR("Could not start tpm");
     return -EIO;
