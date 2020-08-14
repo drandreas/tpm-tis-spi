@@ -83,6 +83,10 @@ struct tpm_device_data {
 #if DT_INST_SPI_DEV_HAS_CS_GPIOS(0)
   struct spi_cs_control cs_ctrl;
 #endif
+#if DT_INST_NODE_HAS_PROP(0, reset_gpios)
+  struct device *reset_gpio_dev;
+  gpio_pin_t reset_gpio_pin;
+#endif
   uint8_t locality;
 };
 
@@ -465,6 +469,23 @@ int tpm_init(struct device *dev) {
   tpm->spi_cfg.cs       = NULL;
 #endif
   tpm->locality         = 0;
+
+  // Reset TPM
+#if DT_INST_NODE_HAS_PROP(0, reset_gpios)
+  tpm->reset_gpio_dev = device_get_binding(DT_INST_GPIO_LABEL(0, reset_gpios));
+  tpm->reset_gpio_pin = DT_INST_GPIO_PIN(0, reset_gpios);
+  if(tpm->reset_gpio_dev == NULL) {
+    LOG_ERR("Could not get RESET device for TPM 2.0");
+    return -EINVAL;
+  }
+  gpio_pin_configure(tpm->reset_gpio_dev,
+                     tpm->reset_gpio_pin,
+                     DT_INST_GPIO_FLAGS(0, reset_gpios) | GPIO_OUTPUT_ACTIVE);
+  k_msleep(10);
+  gpio_pin_set(tpm->reset_gpio_dev,
+               tpm->reset_gpio_pin, 0);
+  k_msleep(10);
+#endif
 
   // Probe TPM
   uint32_t vendor = 0;

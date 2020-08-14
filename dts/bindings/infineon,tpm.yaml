@@ -3,3 +3,9 @@ description: TCG standard compliant TPM
 compatible: "infineon,tpm"
 
 include: spi-device.yaml
+
+properties:
+  reset-gpios:
+    type: phandle-array
+    required: false
+    description: The pin is asserted for 10ms during boot to reset the TPM.
