@@ -16,11 +16,11 @@
 #include <tpm-tis-spi.h>
 #include <logging/log.h>
 
-/* Grotesque hack for pinmux boards */
-#if defined(CONFIG_BOARD_FRDM_K64F) || defined(CONFIG_BOARD_RV32M1_VEGA)
+/* Grotesque hack for NXP Freedom K64 board */
+#ifdef CONFIG_BOARD_FRDM_K64F
 #include <drivers/pinmux.h>
 #include <fsl_port.h>
-#endif
+#endif /* CONFIG_BOARD_FRDM_K64F */
 
 #define TPM_MAX_SPI_FRAMESIZE        64
 #define TPM_ZEPHYR_LOCALITY           1
@@ -456,11 +456,11 @@ int tpm_init(struct device *dev) {
   tpm->cs_ctrl.gpio_pin = DT_INST_SPI_DEV_CS_GPIOS_PIN(0);
   tpm->cs_ctrl.delay    = 0U;
   tpm->spi_cfg.cs       = &(tpm->cs_ctrl);
-#if defined(CONFIG_BOARD_FRDM_K64F) || defined(CONFIG_BOARD_RV32M1_VEGA)
-  pinmux_pin_set(device_get_binding(CONFIG_PINMUX_MCUX_PORTD_NAME), //TODO
+#ifdef CONFIG_BOARD_FRDM_K64F
+  pinmux_pin_set(device_get_binding(CONFIG_PINMUX_MCUX_PORTD_NAME),
                  tpm->cs_ctrl.gpio_pin,
                  PORT_PCR_MUX(kPORT_MuxAsGpio));
-#endif
+#endif /* CONFIG_BOARD_FRDM_K64F */
 #else
   tpm->spi_cfg.cs       = NULL;
 #endif
