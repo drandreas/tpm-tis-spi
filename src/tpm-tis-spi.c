@@ -78,7 +78,7 @@ static uint8_t CMD_SELF_TEST[] = {
 };
 
 struct tpm_device_data {
-  struct device *spi_dev;
+  const struct device *spi_dev;
   struct spi_config spi_cfg;
 #if DT_INST_SPI_DEV_HAS_CS_GPIOS(0)
   struct spi_cs_control cs_ctrl;
@@ -311,19 +311,19 @@ static int tpm_read_segmented_bytes(struct tpm_device_data *tpm, uint16_t len, u
   return len;
 }
 
-static int tpm_cancel(struct device *dev)
+static int tpm_cancel(const struct device *dev)
 {
-  struct tpm_device_data *tpm = dev->driver_data;
+  struct tpm_device_data *tpm = dev->data;
 
   // Return to ready causes the current command to be canceled
   return tpm_write8(tpm, TPM_STS(tpm->locality), TPM_STS_COMMAND_READY);
 }
 
-static int tpm_transmit(struct device *dev,
+static int tpm_transmit(const struct device *dev,
                         size_t command_size,
                         const uint8_t *command_buffer)
 {
-  struct tpm_device_data *tpm = dev->driver_data;
+  struct tpm_device_data *tpm = dev->data;
 
   if((tpm_status(tpm) & TPM_STS_COMMAND_READY) == 0) {
     tpm_cancel(dev);
@@ -383,12 +383,12 @@ static int tpm_transmit(struct device *dev,
   return 0;
 }
 
-static int tpm_receive(struct device *dev,
+static int tpm_receive(const struct device *dev,
                        size_t *response_size,
                        uint8_t *response_buffer,
                        k_timeout_t timeout)
 {
-  struct tpm_device_data *tpm = dev->driver_data;
+  struct tpm_device_data *tpm = dev->data;
 
   // Calculate deadline (this also handles K_FOREVER)
   uint64_t deadline = z_timeout_end_calc(timeout);
@@ -440,8 +440,8 @@ static struct tpm_device_api tpm_api = {
   .cancel = tpm_cancel
 };
 
-int tpm_init(struct device *dev) {
-  struct tpm_device_data *tpm = dev->driver_data;
+int tpm_init(const struct device *dev) {
+  struct tpm_device_data *tpm = dev->data;
 
   // Configure SPI Driver and TPM CS
   tpm->spi_dev = device_get_binding(DT_INST_BUS_LABEL(0));
