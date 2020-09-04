@@ -84,7 +84,7 @@ struct tpm_device_data {
   struct spi_cs_control cs_ctrl;
 #endif
 #if DT_INST_NODE_HAS_PROP(0, reset_gpios)
-  struct device *reset_gpio_dev;
+  const struct device *reset_gpio_dev;
   gpio_pin_t reset_gpio_pin;
 #endif
   uint8_t locality;
