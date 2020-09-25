@@ -9,3 +9,8 @@ properties:
     type: phandle-array
     required: false
     description: The pin is asserted for 10ms during boot to reset the TPM.
+
+  cs-gpios:
+    type: phandle-array
+    required: false
+    description: The pin is asserted as CS instead of the HW CS handling.
