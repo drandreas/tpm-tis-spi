@@ -402,7 +402,7 @@ static int tpm_receive(const struct device *dev,
   int rc = 0;
   do {
     rc = tpm_read_segmented_bytes(tpm, TPM_HEADER_SIZE, response_buffer);
-  } while((deadline < k_uptime_ticks()) && (rc == -ETIME));
+  } while((deadline > k_uptime_ticks()) && (rc == -ETIME));
 
   if (rc < TPM_HEADER_SIZE) {
     return -EIO;
