@@ -74,7 +74,7 @@ static uint8_t CMD_SELF_TEST[] = {
 struct tpm_device_data {
   const struct device *spi_dev;
   struct spi_config spi_cfg;
-#if DT_INST_NODE_HAS_PROP(0, cs_gpios)
+#if DT_INST_SPI_DEV_HAS_CS_GPIOS(0) | DT_INST_NODE_HAS_PROP(0, cs_gpios)
   struct spi_cs_control cs_ctrl;
 #endif
 #if DT_INST_NODE_HAS_PROP(0, reset_gpios)
@@ -449,7 +449,13 @@ int tpm_init(const struct device *dev) {
                            SPI_LOCK_ON | SPI_WORD_SET(8);
   tpm->spi_cfg.slave     = DT_INST_REG_ADDR(0);
 
-#if DT_INST_NODE_HAS_PROP(0, cs_gpios)
+#if DT_INST_SPI_DEV_HAS_CS_GPIOS(0)
+  tpm->cs_ctrl.gpio_dev      = device_get_binding(DT_INST_SPI_DEV_CS_GPIOS_LABEL(0));
+  tpm->cs_ctrl.gpio_pin      = DT_INST_SPI_DEV_CS_GPIOS_PIN(0);
+  tpm->cs_ctrl.gpio_dt_flags = DT_INST_SPI_DEV_CS_GPIOS_FLAGS(0);
+  tpm->cs_ctrl.delay         = 0U;
+  tpm->spi_cfg.cs            = &(tpm->cs_ctrl);
+#elif DT_INST_NODE_HAS_PROP(0, cs_gpios)
   tpm->cs_ctrl.gpio_dev      = device_get_binding(DT_INST_GPIO_LABEL(0, cs_gpios));
   tpm->cs_ctrl.gpio_pin      = DT_INST_GPIO_PIN(0, cs_gpios);
   tpm->cs_ctrl.gpio_dt_flags = DT_INST_GPIO_FLAGS(0, cs_gpios);
