@@ -104,8 +104,6 @@ static int tpm_flow_control(struct tpm_device_data* tpm, const struct spi_buf_se
     *iolen = 1;
 
     for (int i = 0; i < TPM_RETRY_COUNT; i++) {
-      k_sleep(K_MSEC(5));
-
       int ret = spi_read(tpm->spi_dev, &tpm->spi_cfg, buf_set);
       if(ret < 0) {
         return ret;
