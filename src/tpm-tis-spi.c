@@ -270,7 +270,7 @@ static int tpm_get_burstcount(struct tpm_device_data *tpm, const uint32_t timeou
     if(burstcount != 0) {
       return burstcount;
     }
-    k_sleep(K_USEC(TPM_POLL_INTERVAL));
+    k_sleep(K_MSEC(TPM_POLL_INTERVAL));
   }
   return -EBUSY;
 }
