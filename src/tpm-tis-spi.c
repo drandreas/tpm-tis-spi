@@ -21,7 +21,7 @@
 
 #define TPM_HEADER_SIZE              10
 #define TPM_RETRY_COUNT              50
-#define TPM_POLL_INTERVAL            50 /* msec */
+#define TPM_POLL_INTERVAL             5 /* msec */
 
 #define TIS_SHORT_TIMEOUT           250 /* msec */
 #define TIS_LONG_TIMEOUT           2000 /* msec */
