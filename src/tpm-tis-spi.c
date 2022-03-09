@@ -54,20 +54,22 @@
 #define	TPM_DID_VID(l)      (0x0F00 | ((l) << 12))
 #define	TPM_RID(l)          (0x0F04 | ((l) << 12))
 
+#define TPM_DT_NODE_LABEL   spi_tpm
+
 LOG_MODULE_REGISTER(tpm_tis_spi, LOG_LEVEL_DBG);
 
 /* TPM Commands */
 static uint8_t CMD_START_UP[] = {
   0x80, 0x01,             //TPMI_ST_COMMAND_TAG = TPM_ST_NO_SESSIONS
   0x00, 0x00, 0x00, 0x0C, //UINT32 (cmd size)   = 12
-  0x00, 0x00, 0x01, 0x44, //TPM_CC              = TPM_CC_SelfTest
+  0x00, 0x00, 0x01, 0x44, //TPM_CC              = TPM_CC_Startup
   0x00, 0x00              //TPM_SU              = TPM_SU_CLEAR
 };
 
 static uint8_t CMD_SELF_TEST[] = {
   0x80, 0x01,             //TPMI_ST_COMMAND_TAG = TPM_ST_NO_SESSIONS
   0x00, 0x00, 0x00, 0x0B, //UINT32 (cmd size)   = 11
-  0x00, 0x00, 0x01, 0x43, //TPM_CC              = TPM_CC_Startup
+  0x00, 0x00, 0x01, 0x43, //TPM_CC              = TPM_CC_SelfTest
   0x00                    //TPMI_YES_NO         = NO
 };
 
@@ -535,11 +537,6 @@ int tpm_init(const struct device *dev) {
   return 0;
 }
 
-DEVICE_AND_API_INIT(tpm,
-                    DT_INST_LABEL(0),
-                    &tpm_init,
-                    &tpm_data,
-                    NULL,
-                    APPLICATION,
-                    CONFIG_APPLICATION_INIT_PRIORITY,
-                    &tpm_api);
+#define TPM_NODE_ID DT_NODELABEL(TPM_DT_NODE_LABEL)
+DEVICE_DT_DEFINE(TPM_NODE_ID, &tpm_init, NULL, &tpm_data, NULL, APPLICATION,
+                 CONFIG_APPLICATION_INIT_PRIORITY, &tpm_api);
