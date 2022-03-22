@@ -385,7 +385,7 @@ static int tpm_receive(const struct device *dev,
   struct tpm_device_data *tpm = dev->data;
 
   // Calculate deadline (this also handles K_FOREVER)
-  uint64_t deadline = z_timeout_end_calc(timeout);
+  uint64_t deadline = sys_clock_timeout_end_calc(timeout);
 
   // Responde to size query with max size
   if(response_buffer == NULL) {
